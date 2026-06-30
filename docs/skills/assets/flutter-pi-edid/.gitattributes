@@ -1,0 +1,4 @@
+# Reapply-critical assets: keep the EDID byte-exact, keep scripts LF for Linux.
+1024x600.bin binary
+edid-hook text eol=lf
+make_edid.py text eol=lf

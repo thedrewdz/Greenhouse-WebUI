@@ -1,0 +1,15 @@
+#!/bin/sh
+# initramfs-tools hook: include the Main Unit panel's custom EDID so
+# drm.edid_firmware can be honoured before the rootfs is mounted (vc4 loads
+# from the initramfs, before /lib/firmware on disk is available).
+#
+# Install to: /etc/initramfs-tools/hooks/edid  (chmod +x), then:
+#   sudo update-initramfs -u -k all
+# See flutter-pi-on-pi4.md ("Display resolution / EDID override").
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+    prereqs) prereqs; exit 0 ;;
+esac
+. /usr/share/initramfs-tools/hook-functions
+copy_file firmware /lib/firmware/edid/1024x600.bin
