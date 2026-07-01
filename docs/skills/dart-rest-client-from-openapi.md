@@ -1,12 +1,14 @@
-# Skill: Dart REST Client from OpenAPI (+ Push Channel)
+# Skill: Dart REST Client (Dio + Service Clients)
 
 ## Purpose
 
-Guide agents to consume the Main Unit services API from the UI: a typed Dart REST client generated from the services daemon's OpenAPI document, plus the WebSocket/SSE push channel for live data.
+Guide agents to consume the Main Unit services API from the UI using Dio as the HTTP client,
+wrapped in per-controller service clients, behind domain repository abstractions.
 
 ## Use This Skill When
 
-- Generating or regenerating the REST client from the services OpenAPI.
+- Adding or updating an API call from the UI to the services daemon.
+- Adding a new service client that mirrors a new backend controller.
 - Implementing a `data`-layer repository that calls the services API.
 - Wiring the live-push channel into the app.
 
@@ -15,29 +17,108 @@ Guide agents to consume the Main Unit services API from the UI: a typed Dart RES
 - The task is services-side API design (that is `/services`).
 - The task is pure presentation/state (see the bloc and UI packs).
 
-## Contract Rules
+## DioClient — Central Configuration
 
-- The services daemon's **OpenAPI document is the source of truth** for the REST contract. Generate the Dart client from it (e.g. via an OpenAPI generator); do not hand-write request/response models that the contract already defines.
-- Treat the generated client as a `data`-layer detail. Wrap it behind `domain` repository abstractions and map DTOs to entities at the boundary - generated types must not leak into `domain` or `presentation`.
-- Regenerate the client when the services contract changes; never edit generated files by hand.
-- Pin the generator and the contract version so client regeneration is reproducible.
+All HTTP configuration lives in `core/api/dio_client.dart`. Service clients receive a
+`DioClient` via constructor injection and call `_client.dio.get(...)`. Never instantiate
+`Dio` directly inside a service client.
 
-## Connectivity Rules
+`DioClient` owns: base URL, connect/receive timeouts, default headers, logging interceptors,
+and any future retry or auth interceptors. Changes apply automatically to all service clients.
 
-- The services API is reachable on the **loopback interface only**. Make the base URL configurable (build/run config), defaulting to loopback.
-- Loopback transport is plain HTTP by design (see ADR 0001); do not add certificate/TLS handling for the local link.
-- Handle the daemon being unavailable gracefully: the UI can start before/without services and must show a clear "service unavailable" state, retrying rather than crashing.
+The base URL defaults to `http://127.0.0.1:5000` (loopback only — see ADR 0001).
+Override with the `GREENHOUSE_API_URL` build-time environment variable for integration tests.
 
-## Push Channel Rules
+## Service Client Pattern
 
-- Use the daemon's WebSocket or SSE endpoint for the limited live-push cases. A community `signalr_netcore` client is permitted only if the daemon exposes a SignalR hub; prefer the plain WebSocket/SSE path on this single-client loopback link.
-- Expose the push stream through a `domain` abstraction; map incoming payloads to entities in `data`.
-- Reconnect with backoff; on reconnect, re-fetch authoritative state over REST rather than assuming the stream filled gaps.
-- Cancel subscriptions when the consuming bloc/cubit closes.
+Each backend controller has exactly one corresponding service client in the `data/clients/`
+folder of the relevant feature. The naming convention is `{Controller}ServiceClient`.
+
+```
+MainConfigController  →  MainConfigServiceClient  (features/setup/data/clients/)
+WifiConfigController  →  WifiConfigServiceClient  (features/setup/data/clients/)
+SetupController       →  SetupServiceClient       (features/setup/data/clients/)
+```
+
+A service client:
+- Accepts a `DioClient` in its constructor.
+- Exposes one typed method per HTTP verb the controller supports.
+- Returns typed DTOs (plain Dart classes with `fromJson`/`toJson`).
+- Handles 404 → null where appropriate; re-throws other `DioException` for the repository.
+- Never maps DTOs to domain entities — that is the repository's job.
+
+```dart
+class MainConfigServiceClient {
+  MainConfigServiceClient(DioClient client) : _dio = client.dio;
+
+  final Dio _dio;
+  static const _path = '/api/setup/main-config';
+
+  Future<MainConfigDto?> get() async {
+    try {
+      final r = await _dio.get<Map<String, dynamic>>(_path);
+      return MainConfigDto.fromJson(r.data!);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  Future<MainConfigDto> post(MainConfigRequestDto request) async {
+    final r = await _dio.post<Map<String, dynamic>>(_path, data: request.toJson());
+    return MainConfigDto.fromJson(r.data!);
+  }
+}
+```
+
+## DTOs
+
+DTOs are plain Dart classes with manual `fromJson`/`toJson`. No code generation is used.
+DTOs live in `data/dtos/` alongside their service client. They must not appear in `domain`
+or `presentation`.
+
+## Repository Layer
+
+Repository implementations (`data/repositories/`) consume service clients and map DTOs to
+domain entities. The domain layer defines repository abstractions (`domain/repositories/`);
+implementations depend on those abstractions, not vice versa.
+
+```dart
+class MainConfigRepository implements IMainConfigRepository {
+  const MainConfigRepository(this._client);
+  final MainConfigServiceClient _client;
+
+  @override
+  Future<MainConfig?> get() async {
+    final dto = await _client.get();
+    return dto == null ? null : MainConfig(greenhouseName: dto.greenhouseName, ...);
+  }
+}
+```
+
+## Push Channel
+
+- Use the daemon's WebSocket or SSE endpoint for live-push cases.
+- Expose the push stream through a `domain` abstraction; map payloads to entities in `data`.
+- Reconnect with backoff; on reconnect, re-fetch authoritative state over REST.
+- Cancel push subscriptions in the bloc/cubit `close()` method.
+
+## Dependency Injection
+
+`DioClient` is a singleton. Service clients and repositories are factories.
+Register them in `app/di.dart` (composition root).
+
+```dart
+sl.registerLazySingleton<DioClient>(DioClient.new);
+sl.registerFactory(() => MainConfigServiceClient(sl()));
+sl.registerFactory<IMainConfigRepository>(() => MainConfigRepository(sl()));
+```
 
 ## Quality Gate
 
-- The REST client is generated from the services OpenAPI and lives in `data`; generated types do not appear in `domain`/`presentation`.
-- The base URL is configurable and defaults to loopback; no TLS handling for the local link.
-- Daemon-unavailable and push-reconnect paths are handled and surfaced as states.
-- Contract/generator versions are pinned and regeneration is reproducible.
+- `DioClient` is the only place `Dio` is constructed.
+- Each backend controller has one corresponding service client.
+- DTOs do not appear in `domain` or `presentation`.
+- Repository implementations depend on domain abstractions, not service clients directly.
+- Daemon-unavailable and error paths are handled and surfaced as typed states.
+- Base URL is configurable and defaults to loopback; no TLS for the local link.

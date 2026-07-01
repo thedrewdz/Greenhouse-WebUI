@@ -34,9 +34,13 @@ The dependency rule points inward: `presentation` and `data` depend on `domain`;
 
 ## Dependency Injection
 
-- Prefer constructor injection throughout. Compose the graph at the app's composition root.
-- If a service locator (`get_it`) is used, register at the composition root only. Never reference the locator from `domain` or bloc logic (that re-hides dependencies and breaks DIP/testability).
-- Supply blocs/cubits to the widget tree with `BlocProvider` (from `flutter_bloc`) - this is presentation wiring, not a violation of the "no provider/riverpod" rule.
+- Use `injectable` + `get_it`. Annotate classes with `@injectable` (factory), `@singleton`,
+  or `@lazySingleton`. Run `dart run build_runner build` to regenerate `lib/app/di.config.dart`.
+- `@Injectable(as: IFoo)` registers a concrete class against its abstraction.
+- The composition root is `lib/app/di.dart`. The `sl` locator must not be called outside
+  `di.dart` or `BlocProvider` widget-tree wiring.
+- Never reference the locator from `domain` code, repositories, or blocs — dependencies
+  are injected via constructors, which injectable resolves from annotations.
 
 ## Quality Gate
 

@@ -33,7 +33,7 @@ Non-negotiables from those ADRs:
 - **CLEAN architecture** with the dependency rule pointing inward: `presentation` (widgets + blocs/cubits) → `domain` (entities, use cases, repository abstractions) → `data` (repository implementations, the generated REST client, push transport). Inner layers never depend on outer ones.
 - **SOLID, applied to Dart**: small focused abstractions (abstract classes/interfaces), single responsibility per class, dependency inversion via constructor injection against abstractions.
 - **State management: bloc/cubit.** Use `flutter_bloc` (cubit for simple state, bloc for event-driven flows). Do **not** use the `provider` package or `riverpod` for state. (`BlocProvider` from `flutter_bloc` for supplying blocs to the widget tree is expected and is not the same thing.)
-- **Dependency injection**: prefer constructor injection. If a locator (e.g. `get_it`) is used, confine it to the composition root - never reference it from `domain` or bloc logic.
+- **Dependency injection**: use `injectable` + `get_it`. Annotate classes with `@injectable`, `@singleton`, or `@lazySingleton`; run `dart run build_runner build` to regenerate `app/di.config.dart`. Never call `get_it`'s service locator (`sl<T>()`) from `domain` code, repositories, or blocs — only from the composition root (`app/di.dart`) and `BlocProvider` widget-tree wiring.
 
 ## Scope Boundaries
 

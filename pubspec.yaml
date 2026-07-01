@@ -1,0 +1,53 @@
+name: greenhouse_ui
+description: Main Unit touchscreen operator interface for the Greenhouse automation platform.
+publish_to: none
+version: 0.1.0
+
+# Local dev: Flutter 3.35.x (installed).
+# Pi builds: Flutter 3.41.x required by flutterpi_tool 0.11.0.
+# Use fvm (see .fvmrc) for Pi build context. Flutter 3.44+ breaks flutterpi_tool.
+environment:
+  sdk: '>=3.6.0 <4.0.0'
+  flutter: '>=3.35.0 <3.44.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management — flutter_bloc (cubit for simple state, bloc for event-driven flows).
+  # Do NOT use provider or riverpod for state. See docs/skills/flutter-bloc-state-management.md
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
+
+  # Routing — GoRouter with redirect-based route guards.
+  # See docs/skills/go-router-navigation.md
+  go_router: ^14.6.3
+
+  # HTTP client — Dio. Wrap behind domain repository abstractions; DTOs stay in data/.
+  # See docs/skills/dart-rest-client-dio.md
+  dio: ^5.7.0
+
+  # Dependency injection — constructor injection throughout; injectable generates
+  # the get_it registration code from annotations. Never call sl<T>() outside
+  # the composition root (app/di.dart) or BlocProvider widget-tree wiring.
+  get_it: ^7.7.0
+  injectable: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  bloc_test: ^9.1.7
+  mocktail: ^1.0.4
+  build_runner: ^2.4.0
+  injectable_generator: ^2.7.0
+
+  # ── Pi builds ──────────────────────────────────────────────────────────────
+  # flutterpi_tool is NOT listed here. It requires Flutter >=3.38.0 (via 0.11.0)
+  # and the dev SDK may differ. For Pi builds:
+  #   1. fvm use 3.41.0
+  #   2. dart run flutterpi_tool build --arch arm64
+  # See docs/skills/flutter-pi-on-pi4.md and .fvmrc.
+
+flutter:
+  uses-material-design: true
